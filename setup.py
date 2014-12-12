@@ -7,9 +7,9 @@ except ImportError:
     use_setuptools()
     from setuptools import setup
 
-# install_requires = [
+install_requires = [
 #     'Django==1.5.8',
-# ]
+]
 
 tests_require = [
     'elasticsearch>=1.0.0,<2.0.0',
