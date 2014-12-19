@@ -97,7 +97,7 @@ def do_remove(backend, index, model, pks_seen, start, upper_bound, verbosity=1):
     # Can't do pk range, because id's are strings (thanks comments
     # & UUIDs!).
     stuff_in_the_index = SearchQuerySet(using=backend.connection_alias).models(model)[start:upper_bound]
-
+    list_to_delete = []
     # Iterate over those results.
     for result in stuff_in_the_index:
         # Be careful not to hit the DB.
@@ -105,8 +105,9 @@ def do_remove(backend, index, model, pks_seen, start, upper_bound, verbosity=1):
             # The id is NOT in the small_cache_qs, issue a delete.
             if verbosity >= 2:
                 print("  removing %s." % result.pk)
+            list_to_delete.append([result.app_label, result.model_name, str(result.pk)])
+    return list_to_delete
 
-            backend.remove(".".join([result.app_label, result.model_name, str(result.pk)]))
 
 
 class Command(LabelCommand):
@@ -251,18 +252,25 @@ class Command(LabelCommand):
                 else:
                     pks_seen = set(smart_bytes(pk) for pk in qs.values_list('pk', flat=True))
 
+                #added
+                total = SearchQuerySet(using=backend.connection_alias).models(model).count()
+
                 if self.workers > 0:
                     ghetto_queue = []
-
+                list_to_delete = []
                 for start in range(0, total, batch_size):
                     upper_bound = start + batch_size
-
                     if self.workers == 0:
-                        do_remove(backend, index, model, pks_seen, start, upper_bound)
+                        to_delete = do_remove(backend, index, model, pks_seen, start, upper_bound)
+                        list_to_delete.extend(to_delete)
                     else:
                         ghetto_queue.append(('do_remove', model, pks_seen, start, upper_bound, using, self.verbosity))
+
+                for result in list_to_delete:
+                    backend.remove(".".join([result[0], result[1], result[2]]))
 
                 if self.workers > 0:
                     pool = multiprocessing.Pool(self.workers)
                     pool.map(worker, ghetto_queue)
                     pool.terminate()
+
